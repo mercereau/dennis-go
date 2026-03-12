@@ -1,0 +1,96 @@
+server:
+  listen: ":53"
+  upstreams:
+    - "192.168.86.1:53"   # router — always reachable on your LAN
+    - "1.1.1.1:53"        # Cloudflare fallback
+    - "8.8.8.8:53"        # Google fallback
+  default_profile: "default"  # applied to any unknown device
+
+profiles:
+  # No restrictions — full internet access
+  - name: default
+
+  # Parental controls — blocks social media & adult content
+  - name: kids
+    block:
+      - "**.tiktok.com"
+      - "**.instagram.com"
+      - "**.facebook.com"
+      - "**.snapchat.com"
+      - "**.twitter.com"
+      - "**.x.com"
+      - "**.reddit.com"
+      - "**.youtube.com"        # uncomment if you want to block YouTube
+      - "**.onlyfans.com"
+      - "**.pornhub.com"
+      # Add more as needed...
+
+  # IoT devices — only allow necessary cloud endpoints
+  - name: iot
+    allow_only:
+      - "**.amazonaws.com"
+      - "**.googleapis.com"
+      - "**.apple.com"
+      - "ntp.org"
+      - "**.ntp.org"
+      - "pool.ntp.org"
+  
+  - name: ari
+    block:
+      - "**.tiktok.com"
+      - "**.instagram.com"
+      - "**.facebook.com"
+      - "**.snapchat.com"
+      - "**.twitter.com"
+      - "**.x.com"
+      - "**.reddit.com"
+      - "**.youtube.com"        # uncomment if you want to block YouTube
+      - "**.onlyfans.com"
+      - "**.pornhub.com"
+      # block anything related to character.ai
+      - "**.character.ai"
+      - "**.cai.tools"
+      - "**.cai.dev"
+      - "**.cai.app"
+      - "**.cai.cloud"
+      - "**.cai.run"
+      - "**.cai.space"
+      - "**.cai.systems"
+      - "**.cai.network" 
+      - "**character.ai.lan"
+
+  - name: test
+    allow_only:
+      - "**.apple.com"
+  
+  - name: block-ads
+    block:
+      - "**.doubleclick.net"
+      - "**.g.doubleclick.net"
+      - "**.adservice.google.com"
+      - "**.adsafeprotected.com"
+      - "**.adnxs.com"
+      - "**.advertising.com"
+      - "**.adroll.com"
+      - "**.adzerk.net"
+      - "**.amazon-adsystem.com"
+      - "**.appnexus.com"
+      - "**.criteo.com"
+      - "**.facebook.com/ads"
+      - "**.googleadservices.com"
+      - "**.googlesyndication.com"
+      - "**.outbrain.com"
+      - "**.pubmatic.com"
+      - "**.rubiconproject.com"
+      - "**.taboola.com"
+      - "**.doubleverify.com"
+      # Add more ad domains as needed...
+
+devices:
+  - mac: "14:7d:da:4f:3e:18"
+    name: "ari-laptop"
+    profile: "ari"
+
+  - mac: "be:ba:5d:6d:55:99"
+    name: "dads-phone"
+    profile: "block-ads"
