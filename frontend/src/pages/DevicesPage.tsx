@@ -1,26 +1,32 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api'
-import type { Device, Profile, SeenDevice } from '../types'
+import type { Device, DeviceGroup, Profile, SeenDevice } from '../types'
 import { Modal } from '../components/Modal'
 
 const empty: Device = { mac: '', name: '', profile: '' }
 
 export function DevicesPage() {
-  const [devices, setDevices] = useState<Device[]>([])
+  const [devices, setDevices]   = useState<Device[]>([])
   const [profiles, setProfiles] = useState<Profile[]>([])
-  const [seen, setSeen] = useState<SeenDevice[]>([])
-  const [editing, setEditing] = useState<Device | null>(null)
-  const [isNew, setIsNew] = useState(false)
-  const [error, setError] = useState('')
+  const [groups, setGroups]     = useState<DeviceGroup[]>([])
+  const [seen, setSeen]         = useState<SeenDevice[]>([])
+  const [editing, setEditing]   = useState<Device | null>(null)
+  const [isNew, setIsNew]       = useState(false)
+  const [error, setError]       = useState('')
 
   const load = async () => {
-    const [d, p, s] = await Promise.all([api.listDevices(), api.listProfiles(), api.seenDevices()])
+    const [d, p, g, s] = await Promise.all([
+      api.listDevices(), api.listProfiles(), api.listDeviceGroups(), api.seenDevices(),
+    ])
     setDevices(d)
     setProfiles(p)
+    setGroups(g)
     setSeen(s)
   }
 
   useEffect(() => { load() }, [])
+
+  const groupFor = (mac: string) => groups.find(g => g.devices.includes(mac))
 
   const openNew = (prefill?: Partial<Device>) => {
     setEditing({ ...empty, ...prefill })
@@ -79,21 +85,26 @@ export function DevicesPage() {
               {devices.length === 0 && (
                 <tr><td colSpan={4} className="px-4 py-8 text-center text-gray-500">No devices registered</td></tr>
               )}
-              {devices.map(d => (
-                <tr key={d.mac} className="hover:bg-gray-800/50 transition-colors">
-                  <td className="px-4 py-3 font-mono text-gray-300">{d.mac}</td>
-                  <td className="px-4 py-3 text-white">{d.name || <span className="text-gray-500">—</span>}</td>
-                  <td className="px-4 py-3">
-                    {d.profile
-                      ? <span className="badge">{d.profile}</span>
-                      : <span className="text-gray-500">—</span>}
-                  </td>
-                  <td className="px-4 py-3 text-right space-x-2">
-                    <button onClick={() => openEdit(d)} className="btn-ghost">Edit</button>
-                    <button onClick={() => remove(d.mac)} className="btn-danger">Remove</button>
-                  </td>
-                </tr>
-              ))}
+              {devices.map(d => {
+                const group = !d.profile ? groupFor(d.mac) : undefined
+                return (
+                  <tr key={d.mac} className="hover:bg-gray-800/50 transition-colors">
+                    <td className="px-4 py-3 font-mono text-gray-300">{d.mac}</td>
+                    <td className="px-4 py-3 text-white">{d.name || <span className="text-gray-500">—</span>}</td>
+                    <td className="px-4 py-3">
+                      {d.profile
+                        ? <span className="badge">{d.profile}</span>
+                        : group
+                          ? <span className="text-xs text-indigo-300">via <span className="font-medium">{group.name}</span></span>
+                          : <span className="text-gray-500">—</span>}
+                    </td>
+                    <td className="px-4 py-3 text-right space-x-2">
+                      <button onClick={() => openEdit(d)} className="btn-ghost">Edit</button>
+                      <button onClick={() => remove(d.mac)} className="btn-danger">Remove</button>
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </div>
@@ -171,7 +182,7 @@ export function DevicesPage() {
                 value={editing.profile}
                 onChange={e => setEditing({ ...editing, profile: e.target.value })}
               >
-                <option value="">— no profile —</option>
+                <option value="">— no profile (use group or default) —</option>
                 {profiles.map(p => <option key={p.name} value={p.name}>{p.name}</option>)}
               </select>
             </div>

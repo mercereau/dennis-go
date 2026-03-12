@@ -28,6 +28,19 @@ export interface LogEntry {
   rcode: string
 }
 
+export interface Schedule {
+  profile: string
+  start: string
+  end: string
+}
+
+export interface DeviceGroup {
+  name: string
+  profile: string
+  devices: string[]
+  schedules: Schedule[]
+}
+
 export interface SeenDevice {
   mac: string
   client_ip: string

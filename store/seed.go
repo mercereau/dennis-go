@@ -17,7 +17,7 @@ func (s *Store) Seed(cfg *config.Config) error {
 	defer tx.Rollback()
 
 	// Clear existing data
-	for _, table := range []string{"devices", "rules", "profiles", "upstreams", "settings"} {
+	for _, table := range []string{"device_group_schedules", "device_group_members", "device_groups", "devices", "rules", "profiles", "upstreams", "settings"} {
 		if _, err := tx.Exec(`DELETE FROM ` + table); err != nil {
 			return fmt.Errorf("clearing %s: %w", table, err)
 		}
@@ -66,12 +66,45 @@ func (s *Store) Seed(cfg *config.Config) error {
 	// Devices
 	for _, d := range cfg.Devices {
 		mac := strings.ToLower(d.MAC)
-		profileID, ok := profileIDs[d.Profile]
-		if !ok {
-			return fmt.Errorf("device %s references unknown profile %q", d.Name, d.Profile)
+		var profileID *int64
+		if d.Profile != "" {
+			id, ok := profileIDs[d.Profile]
+			if !ok {
+				return fmt.Errorf("device %s references unknown profile %q", d.Name, d.Profile)
+			}
+			profileID = &id
 		}
 		if _, err := tx.Exec(`INSERT INTO devices(mac, name, profile_id) VALUES(?,?,?)`, mac, d.Name, profileID); err != nil {
 			return fmt.Errorf("device %s: %w", d.Name, err)
+		}
+	}
+
+	// Device Groups
+	for _, g := range cfg.DeviceGroups {
+		profileID, ok := profileIDs[g.Profile]
+		if !ok {
+			return fmt.Errorf("device group %s references unknown profile %q", g.Name, g.Profile)
+		}
+		res, err := tx.Exec(`INSERT INTO device_groups(name, profile_id) VALUES(?,?)`, g.Name, profileID)
+		if err != nil {
+			return fmt.Errorf("device group %s: %w", g.Name, err)
+		}
+		groupID, _ := res.LastInsertId()
+		for _, mac := range g.Devices {
+			mac = strings.ToLower(mac)
+			if _, err := tx.Exec(`INSERT INTO device_group_members(group_id, mac) VALUES(?,?)`, groupID, mac); err != nil {
+				return fmt.Errorf("device group member %s/%s: %w", g.Name, mac, err)
+			}
+		}
+		for _, sched := range g.Schedules {
+			schedProfileID, ok := profileIDs[sched.Profile]
+			if !ok {
+				return fmt.Errorf("schedule in group %s references unknown profile %q", g.Name, sched.Profile)
+			}
+			if _, err := tx.Exec(`INSERT INTO device_group_schedules(group_id, profile_id, start_time, end_time) VALUES(?,?,?,?)`,
+				groupID, schedProfileID, sched.Start, sched.End); err != nil {
+				return fmt.Errorf("schedule %s-%s in group %s: %w", sched.Start, sched.End, g.Name, err)
+			}
 		}
 	}
 

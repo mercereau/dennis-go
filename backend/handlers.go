@@ -216,3 +216,84 @@ func (s *Server) deleteDevice(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
+
+// --- Device Groups ---
+
+func (s *Server) listDeviceGroups(w http.ResponseWriter, r *http.Request) {
+	groups, err := s.store.ListDeviceGroups()
+	if err != nil {
+		errJSON(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if groups == nil {
+		groups = []store.DeviceGroupRow{}
+	}
+	writeJSON(w, http.StatusOK, groups)
+}
+
+func (s *Server) getDeviceGroup(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	g, err := s.store.GetDeviceGroup(name)
+	if err != nil {
+		errJSON(w, http.StatusNotFound, "device group not found")
+		return
+	}
+	writeJSON(w, http.StatusOK, g)
+}
+
+type deviceGroupBody struct {
+	Name      string              `json:"name"`
+	Profile   string              `json:"profile"`
+	Devices   []string            `json:"devices"`
+	Schedules []store.ScheduleRow `json:"schedules"`
+}
+
+func (s *Server) createDeviceGroup(w http.ResponseWriter, r *http.Request) {
+	var body deviceGroupBody
+	if err := readJSON(r, &body); err != nil || body.Name == "" || body.Profile == "" {
+		errJSON(w, http.StatusBadRequest, "name and profile are required")
+		return
+	}
+	if body.Devices == nil {
+		body.Devices = []string{}
+	}
+	if body.Schedules == nil {
+		body.Schedules = []store.ScheduleRow{}
+	}
+	if err := s.store.CreateDeviceGroup(body.Name, body.Profile, body.Devices, body.Schedules); err != nil {
+		errJSON(w, http.StatusConflict, err.Error())
+		return
+	}
+	g, _ := s.store.GetDeviceGroup(body.Name)
+	writeJSON(w, http.StatusCreated, g)
+}
+
+func (s *Server) updateDeviceGroup(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	var body deviceGroupBody
+	if err := readJSON(r, &body); err != nil || body.Profile == "" {
+		errJSON(w, http.StatusBadRequest, "profile is required")
+		return
+	}
+	if body.Devices == nil {
+		body.Devices = []string{}
+	}
+	if body.Schedules == nil {
+		body.Schedules = []store.ScheduleRow{}
+	}
+	if err := s.store.UpdateDeviceGroup(name, body.Profile, body.Devices, body.Schedules); err != nil {
+		errJSON(w, http.StatusNotFound, err.Error())
+		return
+	}
+	g, _ := s.store.GetDeviceGroup(name)
+	writeJSON(w, http.StatusOK, g)
+}
+
+func (s *Server) deleteDeviceGroup(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	if err := s.store.DeleteDeviceGroup(name); err != nil {
+		errJSON(w, http.StatusNotFound, err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}

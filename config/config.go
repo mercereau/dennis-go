@@ -9,9 +9,10 @@ import (
 )
 
 type Config struct {
-	Server   ServerConfig    `yaml:"server"`
-	Profiles []Profile       `yaml:"profiles"`
-	Devices  []Device        `yaml:"devices"`
+	Server       ServerConfig  `yaml:"server"`
+	Profiles     []Profile     `yaml:"profiles"`
+	Devices      []Device      `yaml:"devices"`
+	DeviceGroups []DeviceGroup `yaml:"device_groups"`
 }
 
 type ServerConfig struct {
@@ -34,6 +35,23 @@ type Device struct {
 	Profile string `yaml:"profile"`
 }
 
+// DeviceGroup maps a group of MAC addresses to a profile, with optional time-based schedules.
+type DeviceGroup struct {
+	Name      string     `yaml:"name"`
+	Profile   string     `yaml:"profile"`
+	Devices   []string   `yaml:"devices"`
+	Schedules []Schedule `yaml:"schedules,omitempty"`
+}
+
+// Schedule overrides a device group's profile during a time window.
+// Start and End are 24-hour "HH:MM" strings. Windows that cross midnight
+// (e.g. Start="22:00", End="06:00") are handled correctly.
+type Schedule struct {
+	Profile string `yaml:"profile"`
+	Start   string `yaml:"start"`
+	End     string `yaml:"end"`
+}
+
 func Load(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -48,9 +66,13 @@ func Load(path string) (*Config, error) {
 }
 
 func (c *Config) normalize() {
-	// Normalize MAC addresses to lowercase
 	for i := range c.Devices {
 		c.Devices[i].MAC = strings.ToLower(c.Devices[i].MAC)
+	}
+	for i := range c.DeviceGroups {
+		for j := range c.DeviceGroups[i].Devices {
+			c.DeviceGroups[i].Devices[j] = strings.ToLower(c.DeviceGroups[i].Devices[j])
+		}
 	}
 }
 

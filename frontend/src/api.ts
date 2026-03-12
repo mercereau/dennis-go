@@ -1,4 +1,4 @@
-import type { Device, LogEntry, Profile, SeenDevice, Settings } from './types'
+import type { Device, DeviceGroup, LogEntry, Profile, SeenDevice, Settings } from './types'
 
 async function req<T>(method: string, path: string, body?: unknown): Promise<T> {
   const res = await fetch(path, {
@@ -38,6 +38,14 @@ export const api = {
     req<Device>('PUT', `/api/devices/${encodeURIComponent(mac)}`, d),
   deleteDevice: (mac: string) =>
     req<void>('DELETE', `/api/devices/${encodeURIComponent(mac)}`),
+
+  // Device Groups
+  listDeviceGroups: () => req<DeviceGroup[]>('GET', '/api/device-groups'),
+  createDeviceGroup: (g: DeviceGroup) => req<DeviceGroup>('POST', '/api/device-groups', g),
+  updateDeviceGroup: (name: string, g: Omit<DeviceGroup, 'name'>) =>
+    req<DeviceGroup>('PUT', `/api/device-groups/${encodeURIComponent(name)}`, g),
+  deleteDeviceGroup: (name: string) =>
+    req<void>('DELETE', `/api/device-groups/${encodeURIComponent(name)}`),
 
   // Logs
   listLogs: (limit = 200) => req<LogEntry[]>('GET', `/api/logs?limit=${limit}`),

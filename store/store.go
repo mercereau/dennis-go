@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
+	"time"
 
 	_ "modernc.org/sqlite"
 )
@@ -68,6 +69,26 @@ func (s *Store) migrate() error {
 			mac        TEXT NOT NULL UNIQUE,
 			name       TEXT NOT NULL DEFAULT '',
 			profile_id INTEGER REFERENCES profiles(id) ON DELETE SET NULL
+		);
+
+		CREATE TABLE IF NOT EXISTS device_groups (
+			id         INTEGER PRIMARY KEY AUTOINCREMENT,
+			name       TEXT NOT NULL UNIQUE,
+			profile_id INTEGER NOT NULL REFERENCES profiles(id) ON DELETE CASCADE
+		);
+
+		CREATE TABLE IF NOT EXISTS device_group_members (
+			group_id INTEGER NOT NULL REFERENCES device_groups(id) ON DELETE CASCADE,
+			mac      TEXT NOT NULL,
+			PRIMARY KEY (group_id, mac)
+		);
+
+		CREATE TABLE IF NOT EXISTS device_group_schedules (
+			id         INTEGER PRIMARY KEY AUTOINCREMENT,
+			group_id   INTEGER NOT NULL REFERENCES device_groups(id) ON DELETE CASCADE,
+			profile_id INTEGER NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+			start_time TEXT NOT NULL,
+			end_time   TEXT NOT NULL
 		);
 
 		CREATE TABLE IF NOT EXISTS dns_logs (
@@ -144,28 +165,59 @@ func (s *Store) DeviceFor(mac string) *Device {
 }
 
 // ProfileFor returns the filtering profile for a MAC address.
-// Falls back to the default profile for unknown devices.
+// Priority: device's own profile → group profile → default profile.
 func (s *Store) ProfileFor(mac string) *Profile {
 	mac = strings.ToLower(mac)
 
-	// Try to find the device's assigned profile, then fall back to default.
+	var profileID int64
+	var profileName string
+
+	// 1. Device's direct profile assignment.
 	row := s.db.QueryRow(`
 		SELECT p.id, p.name
 		FROM devices d
 		JOIN profiles p ON p.id = d.profile_id
 		WHERE d.mac = ?`, mac)
-
-	var profileID int64
-	var profileName string
-	if err := row.Scan(&profileID, &profileName); err != nil {
-		// Unknown device: use default profile
-		defaultName := s.DefaultProfile()
-		if defaultName == "" {
-			return nil
-		}
-		return s.profileByName(defaultName)
+	if err := row.Scan(&profileID, &profileName); err == nil {
+		return s.profileByID(profileID, profileName)
 	}
-	return s.profileByID(profileID, profileName)
+
+	// 2. Group membership — check active schedule first, then group default.
+	var groupID int64
+	row = s.db.QueryRow(`
+		SELECT g.id, p.id, p.name
+		FROM device_group_members m
+		JOIN device_groups g ON g.id = m.group_id
+		JOIN profiles p ON p.id = g.profile_id
+		WHERE m.mac = ?
+		LIMIT 1`, mac)
+	if err := row.Scan(&groupID, &profileID, &profileName); err == nil {
+		now := time.Now().Format("15:04")
+		schedRow := s.db.QueryRow(`
+			SELECT p.id, p.name
+			FROM device_group_schedules s
+			JOIN profiles p ON p.id = s.profile_id
+			WHERE s.group_id = ?
+			  AND (
+			    (s.start_time <= s.end_time AND ? >= s.start_time AND ? < s.end_time)
+			    OR
+			    (s.start_time > s.end_time AND (? >= s.start_time OR ? < s.end_time))
+			  )
+			LIMIT 1`, groupID, now, now, now, now)
+		var schedProfileID int64
+		var schedProfileName string
+		if err := schedRow.Scan(&schedProfileID, &schedProfileName); err == nil {
+			return s.profileByID(schedProfileID, schedProfileName)
+		}
+		return s.profileByID(profileID, profileName)
+	}
+
+	// 3. Default profile.
+	defaultName := s.DefaultProfile()
+	if defaultName == "" {
+		return nil
+	}
+	return s.profileByName(defaultName)
 }
 
 func (s *Store) profileByName(name string) *Profile {

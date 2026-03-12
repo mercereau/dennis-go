@@ -43,6 +43,13 @@ func (s *Server) Run(ctx context.Context, addr string) error {
 	mux.HandleFunc("PUT /api/devices/{mac}", s.updateDevice)
 	mux.HandleFunc("DELETE /api/devices/{mac}", s.deleteDevice)
 
+	// Device Groups
+	mux.HandleFunc("GET /api/device-groups", s.listDeviceGroups)
+	mux.HandleFunc("POST /api/device-groups", s.createDeviceGroup)
+	mux.HandleFunc("GET /api/device-groups/{name}", s.getDeviceGroup)
+	mux.HandleFunc("PUT /api/device-groups/{name}", s.updateDeviceGroup)
+	mux.HandleFunc("DELETE /api/device-groups/{name}", s.deleteDeviceGroup)
+
 	// Logs
 	mux.HandleFunc("GET /api/logs", s.listLogs)
 	mux.HandleFunc("GET /api/seen-devices", s.seenDevices)

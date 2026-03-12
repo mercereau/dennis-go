@@ -1,13 +1,15 @@
 import { useState } from 'react'
 import { DevicesPage } from './pages/DevicesPage'
+import { DeviceGroupsPage } from './pages/DeviceGroupsPage'
 import { LogsPage } from './pages/LogsPage'
 import { ProfilesPage } from './pages/ProfilesPage'
 import { SettingsPage } from './pages/SettingsPage'
 
-type Page = 'devices' | 'profiles' | 'logs' | 'settings'
+type Page = 'devices' | 'groups' | 'profiles' | 'logs' | 'settings'
 
 const nav: { id: Page; label: string }[] = [
   { id: 'devices',  label: 'Devices'  },
+  { id: 'groups',   label: 'Groups'   },
   { id: 'profiles', label: 'Profiles' },
   { id: 'logs',     label: 'Logs'     },
   { id: 'settings', label: 'Settings' },
@@ -44,6 +46,7 @@ export default function App() {
 
       <main className="mx-auto max-w-5xl px-6 py-8">
         {page === 'devices'  && <DevicesPage />}
+        {page === 'groups'   && <DeviceGroupsPage />}
         {page === 'profiles' && <ProfilesPage />}
         {page === 'logs'     && <LogsPage />}
         {page === 'settings' && <SettingsPage />}

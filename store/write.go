@@ -221,6 +221,198 @@ func (s *Store) DeleteDevice(mac string) error {
 	return nil
 }
 
+// --- Device Groups ---
+
+// ScheduleRow is a single time-window schedule entry within a device group.
+type ScheduleRow struct {
+	Profile string `json:"profile"`
+	Start   string `json:"start"`
+	End     string `json:"end"`
+}
+
+// DeviceGroupRow is the full device group data returned by list/get operations.
+type DeviceGroupRow struct {
+	Name      string        `json:"name"`
+	Profile   string        `json:"profile"`
+	Devices   []string      `json:"devices"`
+	Schedules []ScheduleRow `json:"schedules"`
+}
+
+func (s *Store) ListDeviceGroups() ([]DeviceGroupRow, error) {
+	rows, err := s.db.Query(`
+		SELECT g.name, COALESCE(p.name, '')
+		FROM device_groups g
+		LEFT JOIN profiles p ON p.id = g.profile_id
+		ORDER BY g.name`)
+	if err != nil {
+		return nil, err
+	}
+	type meta struct{ name, profile string }
+	var metas []meta
+	for rows.Next() {
+		var m meta
+		rows.Scan(&m.name, &m.profile)
+		metas = append(metas, m)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	var groups []DeviceGroupRow
+	for _, m := range metas {
+		g, err := s.deviceGroupFull(m.name, m.profile)
+		if err != nil {
+			return nil, err
+		}
+		groups = append(groups, *g)
+	}
+	return groups, nil
+}
+
+func (s *Store) GetDeviceGroup(name string) (*DeviceGroupRow, error) {
+	row := s.db.QueryRow(`
+		SELECT g.name, COALESCE(p.name, '')
+		FROM device_groups g
+		LEFT JOIN profiles p ON p.id = g.profile_id
+		WHERE g.name = ?`, name)
+	var gname, profile string
+	if err := row.Scan(&gname, &profile); err != nil {
+		return nil, err
+	}
+	return s.deviceGroupFull(gname, profile)
+}
+
+func (s *Store) deviceGroupFull(name, profile string) (*DeviceGroupRow, error) {
+	// Fetch members — close rows before opening the next query (MaxOpenConns=1).
+	rows, err := s.db.Query(`
+		SELECT m.mac
+		FROM device_group_members m
+		JOIN device_groups g ON g.id = m.group_id
+		WHERE g.name = ?
+		ORDER BY m.mac`, name)
+	if err != nil {
+		return nil, err
+	}
+	g := &DeviceGroupRow{Name: name, Profile: profile, Devices: []string{}, Schedules: []ScheduleRow{}}
+	for rows.Next() {
+		var mac string
+		rows.Scan(&mac)
+		g.Devices = append(g.Devices, mac)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	// Fetch schedules.
+	rows, err = s.db.Query(`
+		SELECT p.name, s.start_time, s.end_time
+		FROM device_group_schedules s
+		JOIN device_groups g ON g.id = s.group_id
+		JOIN profiles p ON p.id = s.profile_id
+		WHERE g.name = ?
+		ORDER BY s.start_time`, name)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var sr ScheduleRow
+		rows.Scan(&sr.Profile, &sr.Start, &sr.End)
+		g.Schedules = append(g.Schedules, sr)
+	}
+	return g, rows.Err()
+}
+
+func (s *Store) CreateDeviceGroup(name, profile string, devices []string, schedules []ScheduleRow) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var profileID int64
+	if err := tx.QueryRow(`SELECT id FROM profiles WHERE name = ?`, profile).Scan(&profileID); err != nil {
+		return fmt.Errorf("profile %q not found: %w", profile, err)
+	}
+	res, err := tx.Exec(`INSERT INTO device_groups(name, profile_id) VALUES(?,?)`, name, profileID)
+	if err != nil {
+		return fmt.Errorf("create device group: %w", err)
+	}
+	groupID, _ := res.LastInsertId()
+	for _, mac := range devices {
+		mac = strings.ToLower(mac)
+		if _, err := tx.Exec(`INSERT INTO device_group_members(group_id, mac) VALUES(?,?)`, groupID, mac); err != nil {
+			return fmt.Errorf("adding device %s: %w", mac, err)
+		}
+	}
+	if err := insertSchedules(tx, groupID, schedules); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func (s *Store) UpdateDeviceGroup(name, profile string, devices []string, schedules []ScheduleRow) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var groupID int64
+	if err := tx.QueryRow(`SELECT id FROM device_groups WHERE name = ?`, name).Scan(&groupID); err != nil {
+		return fmt.Errorf("device group %q not found: %w", name, err)
+	}
+	var profileID int64
+	if err := tx.QueryRow(`SELECT id FROM profiles WHERE name = ?`, profile).Scan(&profileID); err != nil {
+		return fmt.Errorf("profile %q not found: %w", profile, err)
+	}
+	if _, err := tx.Exec(`UPDATE device_groups SET profile_id = ? WHERE id = ?`, profileID, groupID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM device_group_members WHERE group_id = ?`, groupID); err != nil {
+		return err
+	}
+	for _, mac := range devices {
+		mac = strings.ToLower(mac)
+		if _, err := tx.Exec(`INSERT INTO device_group_members(group_id, mac) VALUES(?,?)`, groupID, mac); err != nil {
+			return fmt.Errorf("adding device %s: %w", mac, err)
+		}
+	}
+	if _, err := tx.Exec(`DELETE FROM device_group_schedules WHERE group_id = ?`, groupID); err != nil {
+		return err
+	}
+	if err := insertSchedules(tx, groupID, schedules); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func insertSchedules(tx *sql.Tx, groupID int64, schedules []ScheduleRow) error {
+	for _, s := range schedules {
+		var profileID int64
+		if err := tx.QueryRow(`SELECT id FROM profiles WHERE name = ?`, s.Profile).Scan(&profileID); err != nil {
+			return fmt.Errorf("schedule profile %q not found: %w", s.Profile, err)
+		}
+		if _, err := tx.Exec(`INSERT INTO device_group_schedules(group_id, profile_id, start_time, end_time) VALUES(?,?,?,?)`,
+			groupID, profileID, s.Start, s.End); err != nil {
+			return fmt.Errorf("adding schedule %s-%s: %w", s.Start, s.End, err)
+		}
+	}
+	return nil
+}
+
+func (s *Store) DeleteDeviceGroup(name string) error {
+	res, err := s.db.Exec(`DELETE FROM device_groups WHERE name = ?`, name)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("device group %q not found", name)
+	}
+	return nil
+}
+
 // --- helpers ---
 
 type execer interface {

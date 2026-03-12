@@ -39,5 +39,25 @@ func (s *Store) Export() (*config.Config, error) {
 		})
 	}
 
+	groups, err := s.ListDeviceGroups()
+	if err != nil {
+		return nil, err
+	}
+	for _, g := range groups {
+		dg := config.DeviceGroup{
+			Name:    g.Name,
+			Profile: g.Profile,
+			Devices: g.Devices,
+		}
+		for _, s := range g.Schedules {
+			dg.Schedules = append(dg.Schedules, config.Schedule{
+				Profile: s.Profile,
+				Start:   s.Start,
+				End:     s.End,
+			})
+		}
+		cfg.DeviceGroups = append(cfg.DeviceGroups, dg)
+	}
+
 	return cfg, nil
 }
