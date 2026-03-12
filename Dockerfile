@@ -22,6 +22,7 @@ RUN apk add --no-cache ca-certificates tzdata
 WORKDIR /app
 
 COPY --from=builder /app/dns-filter ./dns-filter
+COPY config.yaml ./config.yaml
 
 VOLUME ["/data"]
 

@@ -23,11 +23,11 @@ Named after Dennis the Menace. Built to block content for my in-house menace.
                                      │   Go binary       │
 ┌─────────────┐     /api/*           │                   │
 │  Browser    │ ──────────────────▶  │   HTTP API :9090  │
-└─────────────┘        ▲             └────────┬──────────┘
+└─────────────┘         ▲            └────────┬──────────┘
                         │                     │
                ┌────────┴───────┐    ┌────────▼──────────┐
-               │  nginx :80     │    │   SQLite (volume)  │
-               │  React SPA     │    └───────────────────-┘
+               │  nginx :80     │    │   SQLite (volume) │
+               │  React SPA     │    └──────────────────-┘
                └────────────────┘
 ```
 
@@ -38,6 +38,9 @@ Named after Dennis the Menace. Built to block content for my in-house menace.
 git clone https://github.com/jmercereau/dennis-go
 cd dennis-go
 
+# Tell Docker which LAN IP to bind the DNS port to (see note below)
+echo "PI_IP=$(hostname -I | awk '{print $1}')" > .env
+
 # (Optional) seed the database from the example config
 docker compose run --rm backend ./dns-filter -db /data/dns.db -seed /app/config.yaml
 
@@ -47,10 +50,11 @@ docker compose up -d
 
 The web UI will be available at `http://<pi-ip>`.
 
-> **Note:** Port 53 is a privileged port. If your Pi runs `systemd-resolved`, disable it first:
-> ```bash
-> sudo systemctl disable --now systemd-resolved
-> ```
+### Port 53 and local DNS
+
+Port 53 is bound to the Pi's LAN IP only (not `0.0.0.0`), set via `PI_IP` in `.env`. This avoids conflicting with any local DNS process already running on the loopback interface (e.g. `dnsmasq` spawned by NetworkManager, or `systemd-resolved`).
+
+To use Dennis as the DNS server for your whole network, point your **router's DHCP DNS setting** to the Pi's LAN IP. Devices will then receive it automatically on lease renewal.
 
 ## Manual build
 
@@ -111,9 +115,10 @@ Patterns use `**` as a wildcard that matches any number of subdomain segments.
 
 ### Pi 4 / Pi 5 (arm64)
 
-The `docker-compose.yml` builds natively on the Pi. Just copy the repo and run:
+The `docker-compose.yml` builds natively on the Pi. Copy the repo, create a `.env` file, and run:
 
 ```bash
+echo "PI_IP=$(hostname -I | awk '{print $1}')" > .env
 docker compose up -d
 ```
 
