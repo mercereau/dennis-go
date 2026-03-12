@@ -30,3 +30,29 @@ go.work.sum
 # Editor/IDE
 # .idea/
 # .vscode/
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.pnpm-store/
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+.npm
+.yarn/cache
+.yarn/unplugged
+.yarn/build-state.yml
+.yarn/install-state.gz
+.pnp.*
+dist/
+build/
+.cache/
+.parcel-cache/
+.next/
+.nuxt/
+.output/
+.vite/
+*.tsbuildinfo
