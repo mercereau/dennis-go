@@ -4,6 +4,8 @@ A self-hosted DNS filtering server with a web management UI. Assign filtering pr
 
 Built with Go and React, designed to run on a Raspberry Pi.
 
+Named after Dennis the Menace. Built to block content for my in-house menace.
+
 ## Features
 
 - **Per-device filtering** — map MAC addresses to profiles via ARP resolution
